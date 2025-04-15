@@ -37,15 +37,29 @@ def preprocess(img_path):
     return img
 
 def verify(model, detection_threshold, verification_threshold):
-    results = []
-    verification_images = os.listdir(os.path.join("application_data","verification_images"))
-    input_img_path = os.path.join("application_data","input_images","input_image.jpg")
+    verification_dir = os.path.join("application_data", "verification_images")
+    verification_images = os.listdir(verification_dir)
+
+    input_img_path = os.path.join("application_data", "input_images", "input_images.jpg")
     input_img = preprocess(input_img_path)
-    for image in verification_images:
-        validation_img= preprocess(os.path.join('application_data', 'verification_images', image))
-        result = model.predict(list(np.expand_dims([input_img, validation_img], axis=1)),verbose=0)
-        results.append(result)
-    detection = np.sum(np.array(results) > detection_threshold)
-    verification = detection / len(os.listdir(os.path.join('application_data', 'verification_images')))
+
+    # Tiền xử lý tất cả ảnh so sánh trước
+    validation_imgs = [preprocess(os.path.join(verification_dir, img)) for img in verification_images]
+
+    # Tạo batch input: (num_samples, 100, 100, 3)
+    input_imgs_batch = np.array([input_img for _ in validation_imgs])
+    validation_imgs_batch = np.array(validation_imgs)
+
+    # Gom cặp input-validation cho model Siamese
+    model_input = [input_imgs_batch, validation_imgs_batch]
+
+    # Predict batch một lần duy nhất
+    with tf.device('/GPU:0'):
+        results = model.predict(model_input, verbose=0)
+
+    # Tính toán kết quả
+    detection = np.sum(results > detection_threshold)
+    verification = detection / len(verification_images)
     verified = verification > verification_threshold
+
     return results, verified
